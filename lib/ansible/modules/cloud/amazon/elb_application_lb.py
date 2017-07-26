@@ -399,6 +399,12 @@ def _get_subnet_ids_from_subnet_list(subnet_list):
     return subnet_id_list
 
 
+def get_valid_listener_parameters(listener):
+    # See CreateListenerInput in https://github.com/boto/botocore/blob/f51271ac3ce4947ab3bbe46b82bdd79d8be0d5c2/botocore/data/elbv2/2015-12-01/service-2.json
+    valid_parameters = ['LoadBalancerArn', 'Protocol', 'Port', 'DefaultActions', 'SslPolicy', 'Certificates']
+    return dict((key, value) for key, value in listener.items() if key in valid_parameters)
+
+
 def get_elb_listeners(connection, module, elb_arn):
 
     try:
@@ -719,7 +725,7 @@ def create_or_update_elb_listeners(connection, module, elb):
     for listener_to_add in listeners_to_add:
         try:
             listener_to_add['LoadBalancerArn'] = elb['LoadBalancerArn']
-            connection.create_listener(**listener_to_add)
+            connection.create_listener(**get_valid_listener_parameters(listener_to_add))
             listener_changed = True
         except ClientError as e:
             module.fail_json(msg=e.message, exception=traceback.format_exc(), **camel_dict_to_snake_dict(e.response))
@@ -727,7 +733,7 @@ def create_or_update_elb_listeners(connection, module, elb):
     # Modify listeners
     for listener_to_modify in listeners_to_modify:
         try:
-            connection.modify_listener(**listener_to_modify)
+            connection.modify_listener(**get_valid_listener_parameters(listener_to_modify))
             listener_changed = True
         except ClientError as e:
             module.fail_json(msg=e.message, exception=traceback.format_exc(), **camel_dict_to_snake_dict(e.response))
