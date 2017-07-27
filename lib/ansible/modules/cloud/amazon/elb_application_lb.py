@@ -405,6 +405,13 @@ def get_valid_listener_parameters(listener):
     return dict((key, value) for key, value in listener.items() if key in valid_parameters)
 
 
+def update_listener_arns(existing_listeners, updated_listeners):
+    for existing_listener in existing_listeners:
+        for updated_listener in updated_listeners:
+            if existing_listener['Port'] == updated_listener['Port']:
+                existing_listener['ListenerArn'] = updated_listener['ListenerArn']
+
+
 def get_elb_listeners(connection, module, elb_arn):
 
     try:
@@ -725,7 +732,8 @@ def create_or_update_elb_listeners(connection, module, elb):
     for listener_to_add in listeners_to_add:
         try:
             listener_to_add['LoadBalancerArn'] = elb['LoadBalancerArn']
-            connection.create_listener(**get_valid_listener_parameters(listener_to_add))
+            response = connection.create_listener(**get_valid_listener_parameters(listener_to_add))
+            update_listener_arns(listeners, response['Listeners'])
             listener_changed = True
         except ClientError as e:
             module.fail_json(msg=e.message, exception=traceback.format_exc(), **camel_dict_to_snake_dict(e.response))

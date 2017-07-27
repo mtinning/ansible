@@ -21,6 +21,7 @@ from __future__ import (absolute_import, division, print_function)
 from nose.plugins.skip import SkipTest
 import json
 import pytest
+from copy import deepcopy
 from ansible.module_utils._text import to_bytes
 from ansible.module_utils import basic
 from ansible.module_utils.ec2 import HAS_BOTO3
@@ -62,8 +63,15 @@ def compare_listeners(mocker):
 
 
 @pytest.fixture
-def elb(mocker, monkeypatch, compare_listeners):
-    monkeypatch.setattr(elb_module, "ensure_listeners_default_action_has_arn", lambda _a, _b, _c: [])
+def ensure_listeners(mocker):
+    ensure_listeners_mock = mocker.Mock()
+    ensure_listeners_mock.return_value = []
+    return ensure_listeners_mock
+
+
+@pytest.fixture
+def elb(mocker, monkeypatch, compare_listeners, ensure_listeners):
+    monkeypatch.setattr(elb_module, "ensure_listeners_default_action_has_arn", ensure_listeners)
     monkeypatch.setattr(elb_module, "get_elb_listeners", mocker.Mock())
     monkeypatch.setattr(elb_module, "ensure_rules_action_has_arn", mocker.Mock())
     monkeypatch.setattr(elb_module, "get_listener", mocker.Mock())
@@ -74,7 +82,11 @@ def elb(mocker, monkeypatch, compare_listeners):
 
 @pytest.fixture
 def connection(mocker):
-    return mocker.Mock()
+    connection_mock = mocker.Mock()
+    connection_mock.create_listener.return_value = {
+        'Listeners': []
+    }
+    return connection_mock
 
 
 @pytest.fixture
@@ -108,3 +120,22 @@ def test_modify_listeners_called_with_correct_args(mocker, connection, listener,
         DefaultActions=listener['DefaultActions'],
         LoadBalancerArn=existing_elb['LoadBalancerArn']
     )
+
+
+def test_listener_updated_with_arn_when_created(mocker, connection, listener, elb, compare_listeners, ensure_listeners, existing_elb):
+    compare_listeners.return_value = ([listener], [], [])
+    listener_from_ensure_listeners = deepcopy(listener)
+    ensure_listeners.return_value = [listener_from_ensure_listeners]
+
+    new_listener_arn = 'new-listener-arn'
+
+    connection.create_listener.return_value = {
+        'Listeners': [{
+            'Port': listener['Port'],
+            'ListenerArn': new_listener_arn
+        }]
+    }
+
+    elb.create_or_update_elb_listeners(connection, mocker.Mock(), existing_elb)
+
+    assert listener_from_ensure_listeners['ListenerArn'] == new_listener_arn
